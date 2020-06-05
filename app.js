@@ -3,7 +3,7 @@ document.body.appendChild(canvas)
 canvas.setAttribute("id","hello")
 var _scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
-var renderer = new THREE.WebGLRenderer();
+var renderer = new THREE.WebGLRenderer({canvas:canvas});
 renderer.setSize(window.innerWidth,window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -30,7 +30,7 @@ light.position.set(10,10,10);
 light.target.position.set(cube.position);
 _scene.add(light);
 
-camera.position.set(10,10,10);
+camera.position.set(0,5,0);
 camera.lookAt(cube.position);
 
 const controls = new THREE.OrbitControls(camera, canvas);
