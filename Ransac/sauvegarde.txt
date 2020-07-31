@@ -1,0 +1,276 @@
+#include <opencv2/opencv.hpp>
+#include "opencv2/xfeatures2d.hpp"
+#include "opencv2/features2d.hpp"
+#include "opencv2/imgproc.hpp"
+#include "eigen3/Eigen/Geometry"
+#include "./src/pattern.h"
+#define PI 3.141592
+//#include "./src/patterndetector.hpp"
+using namespace Eigen;
+//données physique de la page
+
+double E = 3.5e+9; // Module d'Young en Pa
+double rho = 800; //Masse volumique en kg/m^3
+double l = 0.0297; // longueur de la feuille en m
+double L = 0.021;// largeur de la feuille en m
+double epais = 60e-6;// epaisseur
+double I = epais*l*l*l/12;
+double g = 9.81;
+double C = 12; // raideur de la tranche du livre
+// transforme la position
+Vector4f transformation(cv::Point3f position){
+    double z = position.x/10;
+
+    double newz = z*z;//(rho*g*z*z*z*z/24-rho*g*z*z*z*L/12-C*z*z*z/6*L )/(E*I);
+    return Vector4f(position.x,position.y*0,newz,1);
+    //position(2)= newz;
+
+}
+
+//deformation de la feuille
+//parametres:
+//L: longueur de base de la feuille
+//l: abscisse d'où la déformation commence
+//def: deformation de la page (def represente le décalage en abscisse entre la deformée et la feuille de référence, qui cause la déformation)
+Vector4f transformation2(cv::Point3f position,float l,float L,float def){
+    double x = position.x;
+    double z= position.z;
+    double newz;
+    double newx;
+    if(x<l){
+        float h= 54/7*def/l;
+        newz = h/(l*l)*x*x*x-2*h/l*x*x+h*x;
+        newx = x*(l-def)/l;
+        }
+    else{
+        newz=position.z;
+        newx = x-def;
+    }
+    return Vector4f(newx,position.y,newz,1);
+}
+
+//void transformation_inv(Matrix3d position){
+//    return position/2;
+//}
+//calcul de la matrice extr F à partir des rotation Rx, Ry, Rz, et des translation tx,ty,tz
+MatrixXf calcul_F(float Rx,float Ry, float Rz,float tx,float ty,float tz){
+    //init F
+    MatrixXf F(4,4);
+    F.row(3).setZero();
+    VectorXf translation(3);
+    translation<<tx,ty,tz;
+    float cosX = std::cos(Rx);
+    float sinX = std::sin(Rx);
+    float cosY= std::cos(Ry);
+    float sinY = std::sin(Ry);
+    float cosZ = std::cos(Rz);
+    float sinZ = std::sin(Rz);
+    MatrixXf rotx(3,3);
+    rotx<<1,0,0,
+          0,cosX,-sinX,
+          0,sinX,cosX;
+    MatrixXf roty(3,3);
+    roty<<cosY,0,-sinY,
+          0,1,0,
+          sinY,0,cosY;
+    MatrixXf rotz(3,3);
+    rotz<<cosZ,-sinZ,0,
+          sinZ,cosZ,0,
+          0,0,1;
+    MatrixXf r(3,3);
+    r= rotx*roty*rotz;
+    //ajout rotation totale dans F
+    for(int i=0;i<3;i++){
+        for(int j=0; j<3;j++){
+            F(i,j)=r(i,j);
+        }
+    }
+    //ajout translation dans F
+    for(int k=0;k<3;k++){
+        F(k,3)=translation(k);
+    }
+    F(3,3)=1;
+    return F;
+}
+// calcul de la matrice intrinseque
+MatrixXf calcul_K(float fu,float fv,float cu,float cv){
+    MatrixXf K(3,3);
+    K<<fu,0,cu,
+       0,fu,cv,
+       0,0,1;
+    return K;
+}
+MatrixXf from4x4to3x4(MatrixXf F){
+    MatrixXf mat3x4(3,4);
+    mat3x4.setZero();
+    mat3x4(0,0)=1;
+    mat3x4(1,1)=1;
+    mat3x4(2,2)=1;
+    MatrixXf F3x4(3,4);
+    F3x4=mat3x4*F;
+    return F3x4;
+}
+
+int main(int argc, char **argv)
+{
+
+    //initialisation variable
+    std::string imRef("./data/test.jpg");     //nom de l'image de reference
+    cv::Mat imcam,imcamgray,imrefcolor, imref;
+
+     cv::Ptr<cv::Feature2D> detector = cv::ORB::create(500); //detecteur
+    //Pattern * patref = new Pattern(imref);
+    //    cv::imshow("test1",imref);
+//    cv::waitKey(0);
+
+    std::vector<cv::KeyPoint> keypoints2,kpref;
+    cv::Mat descriptors2, descriptors;
+    std::vector<cv::DMatch> matches;
+//    std::cout<<1/(E*I)<<" "<<L<<std::endl;
+//    cv::VideoCapture  capture = cv::VideoCapture(0);
+//    capture.set(cv::CAP_PROP_FRAME_WIDTH , 640);
+//    capture.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+//    std::cout<<"recupération des images"<<std::endl;
+//    imrefcolor = cv::imread(imRef,cv::COLOR_BGR2GRAY); //initialisation du pattern de reference: matrice de l'image de référence
+//    cv::cvtColor(imrefcolor,imref,cv::COLOR_BGR2GRAY);
+//    capture>>imcam;
+//    cv::cvtColor(imcam,imcamgray,cv::COLOR_BGR2GRAY);
+//    //récupération de l'image
+//    //string nomim2( "/home/vincent/Bureau/stage/c++/calcul_homographie/nat.png");           //nom de l'image à traiter
+
+//     //imRef: matrice de l'image de référence
+//    //Mat im2   = imread(nomim2,cv::COLOR_BGR2GRAY); //im2: matrice de l'image à traiter
+
+//    //while( cv::waitKey(10) < 0){
+//    std::cout<<"detection"<< std::endl;
+//    //detection des points de reference
+//    detector->detectAndCompute(imref, cv::Mat(), kpref, descriptors);
+//    //detector->detectAndCompute(patref->data, cv::Mat(), patref->keypoints, patref->descriptors);
+//    detector->detectAndCompute(imcamgray, cv::Mat(), keypoints2, descriptors2);
+//    //cv::imshow("test",imcamgray);
+//    //cv::waitKey(0);
+//    std::cout<<"comparaison"<< std::endl;
+//    // comparaison des points
+//    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
+//    matcher->match(descriptors2,descriptors,matches,cv::Mat());
+//    // matcher->match(descriptors2,patref->descriptors,matches,cv::Mat());
+//    //classement des matches les plus serieux
+//    std::sort(matches.begin(),matches.end());
+//    std::cout<<"ok"<<std::endl;
+
+//    //suppression des plus faux
+//    matches.erase(matches.begin()+matches.size()*0.15f, matches.end());
+
+//    std::cout<<"affichage"<<std::endl;
+//    //affichage des matches
+//    cv::Mat imMatches;
+//    cv::drawMatches(imcam, keypoints2, imref,kpref, matches, imMatches);
+//    //cv::drawMatches(imcam, keypoints2, patref->data,patref->keypoints, matches, imMatches);
+//    cv::imwrite("./matches.jpg", imMatches);
+
+//    std::vector<cv::Point2f> pt2, ptref;
+//    for(int i = 0; i<matches.size();i++){
+//        pt2.push_back( keypoints2[ matches[i].queryIdx ].pt );
+//        ptref.push_back( kpref[ matches[i].trainIdx ].pt );
+//    }
+
+//    cv::Mat imred, homo;
+//    //calcul homographie
+
+
+//    homo = cv::findHomography( pt2, ptref, cv::RANSAC );
+//    //cv::warpPerspective(imcamgray, imred, homo, imref.size());
+
+//
+//    // Write aligned image to disk.
+//     std::string outFilename("./final.jpg");
+//     std::cout << "Saving aligned image : " << outFilename <<  std::endl;
+//     cv::imwrite(outFilename, imred);
+     //std::string imRef("./data/test.jpg");
+
+
+    //definition des images
+    cv::Mat trainimg = cv::imread(imRef,cv::COLOR_BGR2GRAY);
+    cv::Mat Queryimg=cv::imread(imRef,cv::COLOR_BGR2GRAY);;
+    //definition width and height
+   float wT=trainimg.size().width;
+   float hT=trainimg.size().height;
+   float wQ=Queryimg.size().width;
+   float hQ=Queryimg.size().height;
+   //definition des variables auxiliaires
+   int nbit =0; //nombre iteration
+   int maxNbInliers = 0;
+
+
+    //copy calculate pos
+    std::cout<<"initialisation"<<std::endl;
+    //initialisation F
+    float cu = 0;//imrefcolor.size().width/2;
+    float cv = 0;//imrefcolor.size().height/2;
+    float fu = 424;
+    for(int k = 0; k<360;k++){
+    float Rx= k/180*PI;
+    float Ry= 0/180*PI;
+    float Rz= 0/180*PI;
+    float tx= 500;
+    float ty = 500;
+    float tz=1000;
+    MatrixXf F = calcul_F(Rx,Ry,Rz,tx,ty,tz);
+    MatrixXf K = calcul_K(fu,fu,cu,cv);
+    //definition des points de départs
+    std::vector<cv::Point3d> originpts;
+    for(int i= 0; i<trainimg.size().width; i=i+100){
+        for (int j= 0; j<trainimg.size().height;j=j+100){
+         cv::Point3d pts(i,j,0);
+            originpts.push_back(pts);
+        }
+}
+
+//passage en 3x4de F
+   //MatrixXf F3x4= from4x4to3x4(F);
+    MatrixXf mat3x4(3,4);
+    mat3x4.setZero();
+    mat3x4(0,0)=1;
+    mat3x4(1,1)=1;
+    mat3x4(2,2)=1;
+    MatrixXf F3x4(3,4);
+    F3x4=mat3x4*F;
+   std::vector<cv::Point2f> respts;
+   cv::Mat img(trainimg.size().width,trainimg.size().height, CV_8UC3, cv::Scalar(1000,1000, 1000));
+   int nbpts= originpts.size();
+   Vector4f pos(4);
+   Vector4f refpos(4);
+   for(int i = 0; i<nbpts; i++){
+   float L =imrefcolor.size().width;
+   std::cout<<"pt de base : "<<originpts[i]<<std::endl;
+   pos=transformation2(originpts[i],L/2,L,L/8);
+   std::cout<<"pos : "<<pos<<std::endl;
+   refpos(0)= originpts[i].x;
+   refpos(1)=originpts[i].y;
+   refpos(2)=originpts[i].z;
+   refpos(3)=1;
+   VectorXf ref(3);
+   VectorXf res(3);
+   ref = K*F3x4*refpos;
+   res = K*F3x4*pos;
+   cv::Point2f pt(res(0)/res(2),res(1)/res(2));
+   //std::cout<<pt<<std::endl;
+   cv::Point2f refpt(ref(0)/ref(2),ref(1)/ref(2));
+   //std::cout<<refpt<<std::endl;
+   //respts.push_back(pt);
+   cv::drawMarker(img,pt,cv::Scalar(100,0,0));
+   }
+//cv::imwrite("testres.jpg",img);
+//cv::imshow("test",trainimg);
+cv::imshow("test",img);
+cv::waitKey(0);
+    }
+}
+
+
+
+
+
+
+
+
