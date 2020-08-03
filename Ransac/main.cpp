@@ -216,7 +216,7 @@ public:
     std::unique_ptr<ceres::CostFunctionToFunctor<2,8,2> > compute_pt_trans;
 };
 
-void testdistance(const Eigen::Matrix<double,1,8>   &param,
+void testdistance(const Eigen::Matrix<double,1,8>   param,
                   const Eigen::Matrix<double, 2, 1> &x1, //train point
                   const Eigen::Matrix<double, 2, 1> &x2, //query poi
                   double distance[2]){//,
@@ -246,8 +246,7 @@ double Distancetransfo(const Eigen::Matrix<double, 1, 8> &param,const  Eigen::Ma
 
 class testconditionfinCallback : public ceres::IterationCallback {
 public:
-    testconditionfinCallback(const Eigen::Matrix<double, 1, 8> &param,const Mat &x1, const Mat &x2,
-                             const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {}
+    testconditionfinCallback(const Eigen::Matrix<double, 1, 8> * param,const Mat &x1, const Mat &x2,const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {}
     virtual ceres::CallbackReturnType operator()(
             const ceres::IterationSummary& summary) {
         // If the step wasn't successful, there's nothing to do.
@@ -274,7 +273,7 @@ private:
     Eigen::Matrix<double, 1, 8> param_;
 };
 
-bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double parametresguess[8],const SolverOptions &options,Matrix<double,1,8> *result) {
+bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double parametresguess[8],const SolverOptions &options,Matrix<double,1,8> * result) {
     assert(2 == x1.rows());
     assert(5 <= x1.cols());
     assert(x1.rows() == x2.rows());
@@ -312,9 +311,9 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     solver_options.linear_solver_type = ceres::DENSE_QR;
     solver_options.max_num_iterations = options.max_num_iterations;
     solver_options.update_state_every_iteration = true;
-     std::cout<<"2"<<std::endl;
+    std::cout<<"2"<<std::endl;
     // Terminate if the average symmetric distance is good enough.
-    testconditionfinCallback callback( *result,x1, x2, options);
+    testconditionfinCallback callback( result,x1, x2, options);
     std::cout<<"3"<<std::endl;
     solver_options.callbacks.push_back(&callback);
     std::cout<<"4"<<std::endl;
@@ -396,7 +395,7 @@ int main(int argc, char **argv)
     float L =trainimg.size().width;
     //variables solveur
     Matrix<double,2,70> X1,X2;
-    Matrix<double,1,8> *result;
+    Matrix<double,1,8>  result;
     double parametresguess[8]={Rx,Ry,Rz,tx,ty,tz,L/2,L/10};
     SolverOptions options;
     options.expected_average_symmetric_distance = 0.02;
@@ -487,7 +486,7 @@ int main(int argc, char **argv)
     for(int i =0; i<8;i++){
         std::cout<<parametresguess[i]<<std::endl;
     }
-    testmodelfrom2DFromCorrespondences(X1,X2,&parametresguess[8],options,result);
+    testmodelfrom2DFromCorrespondences(X1,X2,parametresguess,options,&result);
     //cv::warpPerspective(Queryimg, imred, homo, trainimg.size());
     std::cout<<result<<std::endl;
     //cv::waitKey(0);
