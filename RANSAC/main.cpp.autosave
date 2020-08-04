@@ -154,7 +154,7 @@ void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matr
     T cv = T(0);
     K<<fu,0,cu,
        0,fu,cv,
-       0,0,1;
+       0,0,T(1);
     T cosX = cos(rotation[0]);
     T sinX = sin(rotation[0]);
     T cosY = cos(rotation[1]);
@@ -271,7 +271,10 @@ public:
         : x_(x), y_(y) {}
     template<typename T>
     bool operator()(const T* parametres, T* residuals) const {
-        std::cout<<parametres[0]<<std::endl;
+        for(int i=0;i<4;i++){
+            std::cout<< parametres[i]<<std::endl;
+        }
+       
         T rotation[3] = {parametres[0],parametres[1],parametres[2]};
         T  translation[3] = {parametres[3],parametres[4],parametres[5]};
         T L = parametres[6];
@@ -295,6 +298,7 @@ public:
         Matrix<T,3,1> transpoint;
         RotateAndTranslatePoint<T>(rotation,translation,point,transpoint);
         T new_x1[2] ={transpoint[0]/transpoint[2],transpoint[1]/transpoint[2]};
+        std::cout<<new_x1<<std::endl;
 
         residuals[0]= T(y_[0])-new_x1[0];
         residuals[1]= T(y_[1])-new_x1[1];
