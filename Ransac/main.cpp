@@ -145,6 +145,53 @@ Matrix<double,3,4> calcul_P(double Rx,double Ry, double Rz,double tx,double ty,d
 //----------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------
+template<typename T>
+void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matrix<T,4,1> point, Matrix<T,3,1> result){
+    //definition K
+    Matrix<T,3,3> K;
+    T fu = T(444);
+    T cu = T(0);
+    T cv = T(0);
+    K<<fu,0,cu,
+       0,fu,cv,
+       0,0,1;
+    T cosX = cos(rotation[0]);
+    T sinX = sin(rotation[0]);
+    T cosY = cos(rotation[1]);
+    T sinY = sin(rotation[1]);
+    T cosZ = cos(rotation[2]);
+    T sinZ = sin(rotation[2]);
+    Matrix<T,3,3>  rotx;
+    rotx<<T(1),0,0,
+            0,cosX,-sinX,
+            0,sinX,cosX;
+    Matrix<T,3,3>  roty;
+    roty<<cosY,0,-sinY,
+            0,T(1),0,
+            sinY,0,cosY;
+    Matrix<T,3,3>  rotz;
+    rotz<<cosZ,-sinZ,0,
+            sinZ,cosZ,0,
+            0,0,T(1);
+    Matrix<T,3,3>  r;
+    r= rotx*roty*rotz;
+
+    //definition F3x4
+    Matrix<T,3,4> F;
+    for(int i=0;i<3;i++){
+        for(int j=0;j<3;j++){
+            F(i,j)=r(i,j);
+        }
+     F(i,4)=translation[i];
+}
+result = K*F*point;
+
+}
+
+
+
+
+
 Eigen::Matrix<double, 2, 1> transform(Eigen::Matrix<double, 2, 1> trainpt,double rotation[3],double translation[3],double L,double def){
 
     Matrix<double,3,1> position(trainpt[0],trainpt[1],1);
@@ -216,6 +263,52 @@ public:
     std::unique_ptr<ceres::CostFunctionToFunctor<2,8,2> > compute_pt_trans;
 };
 
+
+class distanceFunctor {
+public:
+    distanceFunctor(const Vec &x,
+                    const Vec &y)
+        : x_(x), y_(y) {}
+    template<typename T>
+    bool operator()(const T* parametres, T* residuals) const {
+        std::cout<<parametres[0]<<std::endl;
+        T rotation[3] = {parametres[0],parametres[1],parametres[2]};
+        T  translation[3] = {parametres[3],parametres[4],parametres[5]};
+        T L = parametres[6];
+        T def =parametres[7];
+
+        //coordonnées du point de reference
+        T x = T(x_[0]);
+        T y = T(x_[1]);
+        T newz;
+        T newx;
+        if(x<L){
+            T h= T(54/7.)*def/L;
+            newz = h/(L*L)*x*x*x-T(2)*h/L*x*x+h*x;
+            newx = x*(L-def)/L;
+        }
+        else{
+            newz=T(0);
+            newx = x-def;
+        }
+        Matrix<T,4,1> point(newx,y,newz,T(1));
+        Matrix<T,3,1> transpoint;
+        RotateAndTranslatePoint<T>(rotation,translation,point,transpoint);
+        T new_x1[2] ={transpoint[0]/transpoint[2],transpoint[1]/transpoint[2]};
+
+        residuals[0]= T(y_[0])-new_x1[0];
+        residuals[1]= T(y_[1])-new_x1[1];
+        return true;
+    }
+
+const Vec2 x_;
+const Vec2 y_;
+};
+
+
+
+
+
 void testdistance(const Eigen::Matrix<double,1,8>   param,
                   const Eigen::Matrix<double, 2, 1> &x1, //train point
                   const Eigen::Matrix<double, 2, 1> &x2, //query poi
@@ -246,7 +339,7 @@ double Distancetransfo(const Eigen::Matrix<double, 1, 8> &param,const  Eigen::Ma
 
 class testconditionfinCallback : public ceres::IterationCallback {
 public:
-    testconditionfinCallback(const Eigen::Matrix<double, 1, 8> * param,const Mat &x1, const Mat &x2,const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {}
+    testconditionfinCallback(const Eigen::Matrix<double, 1, 8>  param,const Mat &x1, const Mat &x2,const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {std::cout<<"init callback ok"<<std::endl;}
     virtual ceres::CallbackReturnType operator()(
             const ceres::IterationSummary& summary) {
         // If the step wasn't successful, there's nothing to do.
@@ -259,6 +352,7 @@ public:
             average_distance += Distancetransfo(param_,
                                                 x1_.col(i),
                                                 x2_.col(i));
+              std::cout<<average_distance<<std::endl;
         }
         average_distance /= x1_.cols();
         if (average_distance <= options_.expected_average_symmetric_distance) {
@@ -294,12 +388,12 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     // Step 2: Refine matrix using Ceres minimizer.
     ceres::Problem problem;
     for (int i = 0; i < x1.cols(); i++) {
-        TestFunctor
+        distanceFunctor
                 *parametres_cost_function =
-                new TestFunctor(x1.col(i),x2.col(i));
+                new distanceFunctor(x1.col(i),x2.col(i));
         problem.AddResidualBlock(
                     new ceres::AutoDiffCostFunction<
-                    TestFunctor,
+                    distanceFunctor,
                     2,  // num_residuals
                     8>(parametres_cost_function),
                     NULL,
@@ -313,13 +407,14 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     solver_options.update_state_every_iteration = true;
     std::cout<<"2"<<std::endl;
     // Terminate if the average symmetric distance is good enough.
-    testconditionfinCallback callback( result,x1, x2, options);
+    testconditionfinCallback callback( *result,x1, x2, options);
     std::cout<<"3"<<std::endl;
     solver_options.callbacks.push_back(&callback);
     std::cout<<"4"<<std::endl;
     // Run the solve.
     ceres::Solver::Summary summary;
-    ceres::Solve(solver_options, &problem, &summary);
+
+    ceres::Solve( solver_options, &problem, &summary);
     std::cout<<"5"<<std::endl;
     std::cout<<summary.FullReport()<<std::endl;
     return summary.IsSolutionUsable();
@@ -488,7 +583,7 @@ int main(int argc, char **argv)
     }
     testmodelfrom2DFromCorrespondences(X1,X2,parametresguess,options,&result);
     //cv::warpPerspective(Queryimg, imred, homo, trainimg.size());
-    std::cout<<result<<std::endl;
+    std::cout<<"fin fonction"<<std::endl;
     //cv::waitKey(0);
     std::string outFilename("./final.jpg");
     // cv::imwrite(outFilename, imred);
