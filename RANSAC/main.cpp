@@ -152,27 +152,28 @@ void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matr
     T fu = T(444);
     T cu = T(0);
     T cv = T(0);
-    K<<fu,0,cu,
-       0,fu,cv,
-       0,0,T(1);
+    K<<fu,T(0),cu,
+            T(0),fu,cv,
+            T(0),T(0),T(1);
     T cosX = cos(rotation[0]);
     T sinX = sin(rotation[0]);
     T cosY = cos(rotation[1]);
     T sinY = sin(rotation[1]);
     T cosZ = cos(rotation[2]);
     T sinZ = sin(rotation[2]);
+
     Matrix<T,3,3>  rotx;
-    rotx<<T(1),0,0,
-            0,cosX,-sinX,
-            0,sinX,cosX;
+    rotx<<T(1),T(0),T(0),
+            T(0),T(cosX),-sinX,
+            T(0),sinX,cosX;
     Matrix<T,3,3>  roty;
-    roty<<cosY,0,-sinY,
-            0,T(1),0,
-            sinY,0,cosY;
+    roty<<cosY,T(0),-sinY,
+            T(0),T(1),T(0),
+            sinY,T(0),cosY;
     Matrix<T,3,3>  rotz;
-    rotz<<cosZ,-sinZ,0,
-            sinZ,cosZ,0,
-            0,0,T(1);
+    rotz<<cosZ,-sinZ,T(0),
+            sinZ,cosZ,T(0),
+            T(0),T(0),T(1);
     Matrix<T,3,3>  r;
     r= rotx*roty*rotz;
 
@@ -182,11 +183,11 @@ void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matr
         for(int j=0;j<3;j++){
             F(i,j)=r(i,j);
         }
-     F(i,4)=translation[i];
+        F(i,3)=translation[i];
+    }
+    result = K*F*point;
 }
-result = K*F*point;
 
-}
 
 
 
@@ -271,14 +272,11 @@ public:
         : x_(x), y_(y) {}
     template<typename T>
     bool operator()(const T* parametres, T* residuals) const {
-        for(int i=0;i<4;i++){
-            std::cout<< parametres[i]<<std::endl;
-        }
-        std::cout<<<<std::endl;
         T rotation[3] = {parametres[0],parametres[1],parametres[2]};
         T  translation[3] = {parametres[3],parametres[4],parametres[5]};
         T L = parametres[6];
         T def =parametres[7];
+        //std::cout<< rotation <<std::endl;
 
         //coordonnées du point de reference
         T x = T(x_[0]);
@@ -295,18 +293,34 @@ public:
             newx = x-def;
         }
         Matrix<T,4,1> point(newx,y,newz,T(1));
+
         Matrix<T,3,1> transpoint;
         RotateAndTranslatePoint<T>(rotation,translation,point,transpoint);
-        T new_x1[2] ={transpoint[0]/transpoint[2],transpoint[1]/transpoint[2]};
-        std::cout<<new_x1<<std::endl;
+        //std::cout<<"transpoint: "<< transpoint<<std::endl;
+        T new_x1[2];
+        if(transpoint[2]!=T(0)){
 
+            new_x1[0] =transpoint[0]/transpoint[2];
+            new_x1[1] =transpoint[1]/transpoint[2];
+        }
+        else{
+            new_x1[0] =transpoint[0];
+            new_x1[1]=transpoint[1];
+
+        }
+        std::cout<<"x      : "<< x<<" "<< y<<std::endl;
+        std::cout<<"pttrans: "<< newx<<" "<<y <<" "<< newz<<std::endl;
+        std::cout<<"pt rot : "<< transpoint[0]<<" "<< transpoint[1]<<std::endl;
+        std::cout<<"new_x  : "<< new_x1[0]<<" "<< new_x1[1]<<std::endl;
         residuals[0]= T(y_[0])-new_x1[0];
         residuals[1]= T(y_[1])-new_x1[1];
+
+        //std::cout<<"residuals: "<<residuals[0]<<" "<<residuals[1]<<std::endl;
         return true;
     }
 
-const Vec2 x_;
-const Vec2 y_;
+    const Vec2 x_;
+    const Vec2 y_;
 };
 
 
@@ -352,11 +366,12 @@ public:
         }
         // Calculate average of symmetric geometric distance.
         double average_distance = 0.0;
-        for (int i = 0; i < x1_.cols(); i++) {
+        for (int i = 0; i < 8; i++) {
+            //for (int i = 0; i < x1_.cols(); i++) {
             average_distance += Distancetransfo(param_,
                                                 x1_.col(i),
                                                 x2_.col(i));
-              std::cout<<average_distance<<std::endl;
+            std::cout<<average_distance<<std::endl;
         }
         average_distance /= x1_.cols();
         if (average_distance <= options_.expected_average_symmetric_distance) {
@@ -371,7 +386,7 @@ private:
     Eigen::Matrix<double, 1, 8> param_;
 };
 
-bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double parametresguess[8],const SolverOptions &options,Matrix<double,1,8> * result) {
+bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double parametresguess[8],const SolverOptions &options,Matrix<double,8,1> * result) {
     assert(2 == x1.rows());
     assert(5 <= x1.cols());
     assert(x1.rows() == x2.rows());
@@ -389,9 +404,17 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     std::cout<< "Parametres déformation"<<std::endl;
 
     std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
+
+    for (int i =0;i<8;i++){
+       // parametresguess[i]+= (std::rand()/(double)RAND_MAX )*1000;
+    }
+    *result<<parametresguess[0],parametresguess[1],parametresguess[2],parametresguess[3],parametresguess[4],parametresguess[5],parametresguess[6],parametresguess[7];
+
+    std::cout<<*result<<std::endl;
     // Step 2: Refine matrix using Ceres minimizer.
     ceres::Problem problem;
-    for (int i = 0; i < x1.cols(); i++) {
+    //for (int i = 0; i <8 ; i++) {
+        for (int i = 0; i < x1.cols(); i++) {
         distanceFunctor
                 *parametres_cost_function =
                 new distanceFunctor(x1.col(i),x2.col(i));
@@ -403,23 +426,18 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
                     NULL,
                     result->data());
     }
-    std::cout<<"1"<<std::endl;
     // Configure the solve.
     ceres::Solver::Options solver_options;
     solver_options.linear_solver_type = ceres::DENSE_QR;
     solver_options.max_num_iterations = options.max_num_iterations;
     solver_options.update_state_every_iteration = true;
-    std::cout<<"2"<<std::endl;
     // Terminate if the average symmetric distance is good enough.
     testconditionfinCallback callback( *result,x1, x2, options);
-    std::cout<<"3"<<std::endl;
     solver_options.callbacks.push_back(&callback);
-    std::cout<<"4"<<std::endl;
     // Run the solve.
     ceres::Solver::Summary summary;
 
     ceres::Solve( solver_options, &problem, &summary);
-    std::cout<<"5"<<std::endl;
     std::cout<<summary.FullReport()<<std::endl;
     return summary.IsSolutionUsable();
 
@@ -494,7 +512,7 @@ int main(int argc, char **argv)
     float L =trainimg.size().width;
     //variables solveur
     Matrix<double,2,70> X1,X2;
-    Matrix<double,1,8>  result;
+    Matrix<double,8,1>  result;
     double parametresguess[8]={Rx,Ry,Rz,tx,ty,tz,L/2,L/10};
     SolverOptions options;
     options.expected_average_symmetric_distance = 0.02;
@@ -588,6 +606,7 @@ int main(int argc, char **argv)
     testmodelfrom2DFromCorrespondences(X1,X2,parametresguess,options,&result);
     //cv::warpPerspective(Queryimg, imred, homo, trainimg.size());
     std::cout<<"fin fonction"<<std::endl;
+    std::cout<<result<<std::endl;
     //cv::waitKey(0);
     std::string outFilename("./final.jpg");
     // cv::imwrite(outFilename, imred);
