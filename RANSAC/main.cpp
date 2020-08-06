@@ -26,7 +26,7 @@ class SolverOptions {
     // for a wide range of use cases.
 public:
     SolverOptions()
-        :  max_num_iterations(50),
+        :  max_num_iterations(500),
           expected_average_symmetric_distance(1e-16) {}
     // Maximal number of iterations for the refinement step.
 
@@ -146,10 +146,11 @@ Matrix<double,3,4> calcul_P(double Rx,double Ry, double Rz,double tx,double ty,d
 //----------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------
 template<typename T>
-void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matrix<T,4,1> point, Matrix<T,3,1> result){
+Matrix<T,3,1>  RotateAndTranslatePoint(const T* rotation, const T* translation, const Matrix<T,4,1> point){
+    Matrix<T,3,1>  result;
     //definition K
     Matrix<T,3,3> K;
-    T fu = T(444);
+    T fu = T(424);
     T cu = T(0);
     T cv = T(0);
     K<<fu,T(0),cu,
@@ -185,7 +186,13 @@ void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matr
         }
         F(i,3)=translation[i];
     }
-    result = K*F*point;
+    result=K*F*point;
+
+   // std::cout<<"point trans "<<result<<std::endl;
+    return result;
+    //    std::cout<<K*F<<std::endl;
+
+    //    std::cout<<"point trans "<<result<<std::endl;
 }
 
 
@@ -194,10 +201,16 @@ void RotateAndTranslatePoint(const T* rotation, const T* translation, const Matr
 
 
 Eigen::Matrix<double, 2, 1> transform(Eigen::Matrix<double, 2, 1> trainpt,double rotation[3],double translation[3],double L,double def){
-
+//    std::cout<<"translation"<<std::endl;
+//    std::cout<<translation[0]<<"   "<<translation[1]<<"   "<<translation[2]<<std::endl;
+//    std::cout<<"rotation"<<std::endl;
+//    std::cout<<rotation[0]<<"   "<<rotation[1]<<"   "<<rotation[2]<<std::endl;
     Matrix<double,3,1> position(trainpt[0],trainpt[1],1);
+//    std::cout<<"l: "<<L<<" "<<"def: "<<def<<std::endl;
     Matrix<double,4,1> pt= transformation2(position,L,def);
-    Matrix<double,3,4> P = calcul_P(rotation[0],rotation[1],rotation[2],translation[0],translation[1],translation[2],444,444,0,0);
+    Matrix<double,3,4> P = calcul_P(rotation[0],rotation[1],rotation[2],translation[0],translation[1],translation[2],424,424,0,0);
+    //std::cout<<"P"<<std::endl;
+    //std::cout<<P<<std::endl;
     Eigen::Matrix<double, 3, 1> res3d=P*pt;
     return Eigen::Matrix<double,2,1>(res3d[0]/res3d[2],res3d[1]/res3d[2]);
 
@@ -284,6 +297,7 @@ public:
         T newz;
         T newx;
         if(x<L){
+            //std::cout<<"point tranformé"<<std::endl;
             T h= T(54/7.)*def/L;
             newz = h/(L*L)*x*x*x-T(2)*h/L*x*x+h*x;
             newx = x*(L-def)/L;
@@ -295,23 +309,35 @@ public:
         Matrix<T,4,1> point(newx,y,newz,T(1));
 
         Matrix<T,3,1> transpoint;
-        RotateAndTranslatePoint<T>(rotation,translation,point,transpoint);
+        //std::cout<<"point :"<<point<<std::endl;
+        //        std::cout<< "parametres initiaux"<<std::endl;
+        //        std::cout<< "rotations"<<std::endl;
+        //        std::cout<< "Rx: "<<parametres[0]<< " Ry: "<<parametres[1]<< " Rz: "<<parametres[2]<<std::endl;
+        //        std::cout<< "Translations"<<std::endl;
+        //        std::cout<< "Tx: "<<parametres[3]<< " Ty: "<<parametres[4]<< " Tz: "<<parametres[5]<<std::endl;
+        //        std::cout<< "Parametres déformation"<<std::endl;
+
+        //        std::cout<< "Longueur: "<<parametres[6]<<" deformation: "<<parametres[7] <<std::endl;
+        transpoint = RotateAndTranslatePoint<T>(rotation,translation,point);
         //std::cout<<"transpoint: "<< transpoint<<std::endl;
         T new_x1[2];
-        if(transpoint[2]!=T(0)){
-
-            new_x1[0] =transpoint[0]/transpoint[2];
-            new_x1[1] =transpoint[1]/transpoint[2];
-        }
-        else{
+        if(transpoint[2]==T(0)){
             new_x1[0] =transpoint[0];
             new_x1[1]=transpoint[1];
 
         }
-        std::cout<<"x      : "<< x<<" "<< y<<std::endl;
-        std::cout<<"pttrans: "<< newx<<" "<<y <<" "<< newz<<std::endl;
-        std::cout<<"pt rot : "<< transpoint[0]<<" "<< transpoint[1]<<std::endl;
-        std::cout<<"new_x  : "<< new_x1[0]<<" "<< new_x1[1]<<std::endl;
+        else{
+
+            new_x1[0] =transpoint[0]/transpoint[2];
+            new_x1[1] =transpoint[1]/transpoint[2];
+
+        }
+        //std::cout<<"x      :"<< x<<" "<< y<<std::endl;
+        //std::cout<<"point  :"<<point[0]<<" "<<point[1]<<" "<<point[2]<<std::endl;
+        //std::cout<<"pttrans:"<< newx<<" "<<y <<" "<< newz<<std::endl;
+        //std::cout<<" "<<std::endl;
+        //std::cout<<"pt rot : "<< transpoint[0]<<" "<< transpoint[1]<<std::endl;
+        //std::cout<<"new_x  : "<< new_x1[0]<<" "<< new_x1[1]<<std::endl;
         residuals[0]= T(y_[0])-new_x1[0];
         residuals[1]= T(y_[1])-new_x1[1];
 
@@ -327,31 +353,38 @@ public:
 
 
 
-void testdistance(const Eigen::Matrix<double,1,8>   param,
+Vec2 testdistance(const Eigen::Matrix<double,1,8>   param,
                   const Eigen::Matrix<double, 2, 1> &x1, //train point
-                  const Eigen::Matrix<double, 2, 1> &x2, //query poi
-                  double distance[2]){//,
+                  const Eigen::Matrix<double, 2, 1> &x2){ //query point){//,
     // T backward_error[2]) {
+   // std::cout<<"param"<<std::endl;
+//    std::cout<<param<<std::endl;
+
     typedef Eigen::Matrix<double, 3, 1> Vec3;
     double rotation[3];
     double translation[3];
     double L;
     double def;
-    for (int i=0;i>3;i++){
-        rotation[i]=param(i);
-        translation[i]=param(i+3);
+  //  std::cout<<"rotation:           translation:"<<std::endl;
+    for (int i=0;i<3;i++){
+        rotation[i]=param[i];
+        translation[i]=param[i+3];
+      //  std::cout<<rotation[i]<<"                 "<<translation[i]<<std::endl;
     }
+
     L = param[6];
     def =param[7];
     Eigen::Matrix<double,2,1> x1_trans =transform(x1,rotation,translation,L,def);
-    distance[0] =x2(0)-x1_trans(0);
-    distance[1]= x2(1)-x1_trans(1);
+   // distance[0] =x2(0)-x1_trans(0);
+    //distance[1]= x2(1)-x1_trans(1);
+    //std::cout<<x2-x1_trans<<std::endl;
+    return x2-x1_trans;
 }
 double Distancetransfo(const Eigen::Matrix<double, 1, 8> &param,const  Eigen::Matrix<double, 2, 1> &x1,
                        const  Eigen::Matrix<double, 2, 1> &x2) {
     Vec2 distance;
-    testdistance(param,x1,x2,distance.data());
-    return distance.squaredNorm();
+    distance =testdistance(param,x1,x2);
+    return distance.norm();
 
 }
 
@@ -366,14 +399,15 @@ public:
         }
         // Calculate average of symmetric geometric distance.
         double average_distance = 0.0;
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 1; i++) {
             //for (int i = 0; i < x1_.cols(); i++) {
             average_distance += Distancetransfo(param_,
                                                 x1_.col(i),
                                                 x2_.col(i));
-            std::cout<<average_distance<<std::endl;
+
         }
         average_distance /= x1_.cols();
+        //std::cout<<"distance moyenne: "<<average_distance<<" "<<"précision limite: "<<options_.expected_average_symmetric_distance <<std::endl;
         if (average_distance <= options_.expected_average_symmetric_distance) {
             return ceres::SOLVER_TERMINATE_SUCCESSFULLY;
         }
@@ -405,16 +439,24 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
 
     std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
 
-    for (int i =0;i<8;i++){
-       // parametresguess[i]+= (std::rand()/(double)RAND_MAX )*1000;
+    for (int i =0;i<6;i++){
+        parametresguess[i]+= (std::rand()/(double)RAND_MAX )*parametresguess[i];
     }
     *result<<parametresguess[0],parametresguess[1],parametresguess[2],parametresguess[3],parametresguess[4],parametresguess[5],parametresguess[6],parametresguess[7];
+    std::cout<<""<<std::endl;
+    std::cout<< "parametres déformés"<<std::endl;
+    std::cout<< "rotations"<<std::endl;
+    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
+    std::cout<< "Translations"<<std::endl;
+    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
+    std::cout<< "Parametres déformation"<<std::endl;
 
-    std::cout<<*result<<std::endl;
+    std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
+   // std::cout<<*result<<std::endl;
     // Step 2: Refine matrix using Ceres minimizer.
     ceres::Problem problem;
     //for (int i = 0; i <8 ; i++) {
-        for (int i = 0; i < x1.cols(); i++) {
+    for (int i = 0; i < 1; i++) {
         distanceFunctor
                 *parametres_cost_function =
                 new distanceFunctor(x1.col(i),x2.col(i));
@@ -490,7 +532,9 @@ int main(int argc, char **argv)
 
 
     Matrix<double,4,4> F = calcul_F(Rx,Ry,Rz,tx,ty,tz);
+
     Matrix<double,3,3> K = calcul_K(fu,fu,cu,cv);
+
     //definition des points de départs
     std::vector<Matrix<double,3,1>> originpts;
     for(int i= 0; i<trainimg.size().width; i=i+100){
@@ -502,6 +546,7 @@ int main(int argc, char **argv)
 
     //passage en 3x4de F
     Matrix<double,3,4> F3x4= from4x4to3x4(F);
+    std::cout<<K*F3x4<<std::endl;
     std::vector<cv::Point2f> respts;
     cv::Mat img(wT,hT/2, CV_8UC3, cv::Scalar(1000,1000, 1000));
     std::cout<<trainimg.size().width<<" "<< trainimg.size().height<<std::endl;
