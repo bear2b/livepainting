@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="">
+
+<head>
+    <style>
+        body {
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        #container {
+            z-index: 50;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+        }
+    </style>
+
+</head>
+
+<body>
+
+
+    <div id="container">
+        <canvas id="c" style="width:100%;height:100%;"></canvas>
+    </div>
+
+    <script src="three.js"></script>
+    <script src="GLTFLoader.js"></script>
+    <script src="OrbitControls.js"></script>
+
+    <script>
+        var trex, mixer;
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({
+            canvas
+        });
+        renderer.shadowMap.enabled = true;
+        resizeRendererToDisplaySize(renderer)
+
+        let idle, // Idle, the default state our character returns to
+            idleAnim,
+            idleAnims,
+            roar,
+            damage,
+            clock = new THREE.Clock(), // Used for anims, which run to a clock instead of frame rate
+            currentlyAnimating = false, // Used to check whether characters neck is being used in another anim
+            raycaster = new THREE.Raycaster(),
+            fileAnimations,
+            currentAnim,
+            fromAnim,
+            toAnim, lastNonIdleStartTime
+
+        let audioIdle, audios
+
+        audioIdle = document.createElement('audio');
+        audioIdle.src = "steps.mp3"
+        audioIdle.loop = true
+        audioIdle.play()
+        audios = [document.createElement('audio'), document.createElement('audio')]
+        audios[1].src = "roar.mp3"
+        audios[0].src = "hurt.mp3"
+
+
+        const fov = 75;
+        const aspect = 2; // the canvas default
+        const near = 0.1;
+        const far = 1000;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.set(482, 281, 0.5);
+        //camera.position.set(50, 50, 0.5);
+        const controls = new THREE.OrbitControls(camera, canvas);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('white');
+        let renderRequested = false;
+
+        function main() {
+
+            function addLight(x, y, z) {
+                let d = 8.25;
+                let dirLight = new THREE.DirectionalLight(0xffffff, 0.94);
+                dirLight.position.set(7, 8, 7);
+                dirLight.target.position.set( 0, 0, 0 );
+                window.dirLight=dirLight
+                dirLight.castShadow = true;
+ /*                dirLight.shadow.mapSize = new THREE.Vector2(1024, 1024);
+                 dirLight.shadow.camera.near = 0.1;
+                 dirLight.shadow.camera.far = 1500;
+                 dirLight.shadow.camera.left = d * -1;
+                 dirLight.shadow.camera.right = d;
+                 dirLight.shadow.camera.top = d;
+                 dirLight.shadow.camera.bottom = d * -1;
+                // Add directional Light to scene */
+                scene.add(dirLight);
+                // Floor
+                var planeGeometry = new THREE.PlaneBufferGeometry(2000, 2000, 2000, 2000);
+                var planeMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x00ff00
+                })
+                var plane = new THREE.Mesh(planeGeometry, planeMaterial);
+                plane.rotation.x = -0.5 * Math.PI;
+                plane.receiveShadow = true;
+                scene.add(plane);
+
+                let floorGeometry = new THREE.PlaneGeometry(5000, 5000, 1, 1);
+                let floorMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xeeeeee,
+                    shininess: 0,
+                });
+
+                let floor = new THREE.Mesh(floorGeometry, floorMaterial);
+                floor.rotation.x = -0.5 * Math.PI;
+                floor.receiveShadow = true;
+                floor.position.y = -1;
+                scene.add(floor);
+                var sphereGeometry = new THREE.SphereBufferGeometry(1, 32, 32);
+
+                var sphereMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xff0000
+                });
+                var sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                sphere.position.set(0, 5, 0)
+                sphere.castShadow = true; //default is false
+                sphere.receiveShadow = false; //default
+                scene.add(sphere);
+
+                //Create a plane that receives shadows (but does not cast them)
+            var planeGeometry = new THREE.PlaneBufferGeometry(600, 600, 920, 920);
+            var planeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x00ff00
+            })
+            var plane2 = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane2.receiveShadow = true;
+            plane2.position.set(00,2,200)
+            scene.add(plane2);
+                var helper = new THREE.CameraHelper( dirLight.shadow.camera );
+                scene.add( helper );
+            }
+
+
+            addLight(-1, 2, 4);
+
+
+
+            var loader = new THREE.GLTFLoader();
+            window.addEventListener('click', e => raycast(e));
+            window.addEventListener('touchend', e => raycast(e, true));
+
+            function raycast(e, touch = false) {
+                var mouse = {};
+                if (touch) {
+                    mouse.x = 2 * (e.changedTouches[0].clientX / window.innerWidth) - 1;
+                    mouse.y = 1 - 2 * (e.changedTouches[0].clientY / window.innerHeight);
+                } else {
+                    mouse.x = 2 * (e.clientX / window.innerWidth) - 1;
+                    mouse.y = 1 - 2 * (e.clientY / window.innerHeight);
+                }
+                // update the picking ray with the camera and mouse position
+                raycaster.setFromCamera(mouse, camera);
+
+                // calculate objects intersecting the picking ray
+                var intersects = raycaster.intersectObjects(scene.children, true);
+
+                if (intersects[0]) {
+                    var object = intersects[0].object;
+                    console.log(object.name)
+                    if (object.name === 'T Rex_TRex_0') {
+
+                        if (!currentlyAnimating) {
+                            currentlyAnimating = true;
+                            playOnClick();
+                        }
+                    }
+                }
+            }
+
+            // Get a random animation, and play it
+            function playOnClick() {
+                let anim = Math.floor(Math.random() * possibleAnims.length) + 0;
+                playModifierAnimation(idle, 0.25, possibleAnims[anim], 0.25);
+
+                audios[anim].play()
+            }
+            // Get a random animation, and play it
+            function randomIdle() {
+                setTimeout(randomIdle, Math.random() * 3000)
+                let now = (new Date()).getTime()
+                if ((now - lastNonIdleStartTime) < 5000) {
+                    return
+                }
+                let anim = Math.floor(Math.random() * (idleAnims.length));
+                console.log(anim)
+                playModifierAnimation(idle, 0.25, idleAnims[anim], 0.25);
+
+
+            }
+
+
+            function playModifierAnimation(from, fSpeed, to, tSpeed) {
+                // currentAnim=to
+                lastNonIdleStartTime = (new Date()).getTime()
+                to.setLoop(THREE.LoopOnce);
+                to.reset();
+                to.play();
+                from.crossFadeTo(to, fSpeed, true);
+                setTimeout(function () {
+                    from.enabled = true;
+                    to.crossFadeTo(idle, tSpeed, true);
+                    currentlyAnimating = false;
+                }, to._clip.duration * 1000 - ((tSpeed + fSpeed) * 1000));
+            }
+
+            // Load a glTF resource
+            loader.load(
+                // resource URL
+                'https://argo.toundra.io/trex/scene.gltf',
+                // called when the resource is loaded
+                function (gltf) {
+
+                    scene.add(gltf.scene);
+
+
+                    fileAnimations = gltf.animations; // Array<THREE.AnimationClip>
+                    model = gltf.scene; // THREE.Group
+                    model.scale.set(0.05,0.05,0.05)
+                    model.position.set(0, 12, 0);
+                    model.traverse(o => {
+                        if (o.name == "T Rex_TRex_0") {
+                            console.log(o.name + " shadow")
+                            o.castShadow = true;
+                            o.receiveShadow = true;
+                        }
+                    });
+                    gltf.scenes; // Array<THREE.Group>
+                    gltf.cameras; // Array<THREE.Camera>
+                    gltf.asset; // Object
+                    trex = gltf
+                    mixer = new THREE.AnimationMixer(model);
+
+                    let clips = fileAnimations.filter(val => (val.name == 'Damage_A.FBX_0' || val.name ==
+                        'Roar.FBX_0'));
+                    possibleAnims = clips.map(val => {
+                        let clip = THREE.AnimationClip.findByName(clips, val.name);
+
+                        clip.tracks.splice(3, 3);
+                        clip.tracks.splice(9, 3);
+
+                        clip = mixer.clipAction(clip);
+                        return clip;
+                    });
+
+                    let idleClips = fileAnimations.filter(val => (val.name == 'Stomp.FBX_0' || val.name ==
+                        'Look_Side.FBX_0'));
+                    idleAnims = idleClips.map(val => {
+                        let clip = THREE.AnimationClip.findByName(idleClips, val.name);
+
+                        clip.tracks.splice(3, 3);
+                        clip.tracks.splice(9, 3);
+
+                        clip = mixer.clipAction(clip);
+                        return clip;
+                    });
+                    idleAnim = THREE.AnimationClip.findByName(fileAnimations, 'Idle.FBX_0');
+
+                    idleAnim.tracks.splice(3, 3);
+                    idleAnim.tracks.splice(9, 3);
+                    currentAnim = idleAnim
+                    idle = mixer.clipAction(idleAnim);
+                    idle.play();
+                    randomIdle()
+
+                    /*         let roarAnim = THREE.AnimationClip.findByName(fileAnimations, 'Roar.FBX_0');
+
+                            roarAnim.tracks.splice(3, 3);
+                            roarAnim.tracks.splice(9, 3);
+
+                            roar = mixer.clipAction(roarAnim); */
+
+
+
+                },
+                // called while loading is progressing
+                function (xhr) {
+
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+
+                },
+                // called when loading has errors
+                function (error) {
+
+                    console.log('An error happened' + error);
+
+                }
+            );
+        }
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+                renderer.setPixelRatio(window.devicePixelRatio ? window.devicePixelRatio : 1);
+            }
+            return needResize;
+        }
+
+        function render() {
+            renderRequested = undefined;
+            requestAnimationFrame(render);
+            const canvas = renderer.domElement;
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+            if (mixer) {
+                mixer.update(clock.getDelta());
+            }
+            renderer.render(scene, camera);
+        }
+
+        function requestRenderIfNotRequested() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(render);
+            }
+        }
+
+
+
+
+
+
+        function addTest() {
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
+            var light = new THREE.DirectionalLight(0xffffff, 1, 100);
+            light.position.set(10, 10, 10); //default; light shining from top
+            light.target.position.set(0,0,0)
+            light.castShadow = true; // default false
+            scene.add(light);
+
+            //Set up shadow properties for the light
+            light.shadow.mapSize.width = 512; // default
+            light.shadow.mapSize.height = 512; // default
+            light.shadow.camera.near = 0.5; // default
+            light.shadow.camera.far = 500; // default
+
+            //Create a sphere that cast shadows (but does not receive them)
+            var sphereGeometry = new THREE.SphereBufferGeometry(5, 32, 32);
+            var sphereMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff0000
+            });
+            var sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            sphere.castShadow = true; //default is false
+            sphere.receiveShadow = false; //default
+            scene.add(sphere);
+
+            //Create a plane that receives shadows (but does not cast them)
+            var planeGeometry = new THREE.PlaneBufferGeometry(200, 200, 320, 320);
+            var planeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x00ff00
+            })
+            var plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.receiveShadow = true;
+            scene.add(plane);
+            var helper = new THREE.CameraHelper( light.shadow.camera );
+scene.add( helper );
+        }
+        main()
+        //addTest()
+        render();
+    </script>
+</body>
+
+</html>
