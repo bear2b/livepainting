@@ -10,6 +10,9 @@
 #include "ceres/ceres.h"
 #include "ceres/rotation.h"
 //#include "./src/patterndetector.hpp"
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 using namespace Eigen;
 #include "ceres/ceres.h"
 #include "glog/logging.h"
@@ -188,7 +191,7 @@ Matrix<T,3,1>  RotateAndTranslatePoint(const T* rotation, const T* translation, 
     }
     result=K*F*point;
 
-   // std::cout<<"point trans "<<result<<std::endl;
+    // std::cout<<"point trans "<<result<<std::endl;
     return result;
     //    std::cout<<K*F<<std::endl;
 
@@ -201,12 +204,12 @@ Matrix<T,3,1>  RotateAndTranslatePoint(const T* rotation, const T* translation, 
 
 
 Eigen::Matrix<double, 2, 1> transform(Eigen::Matrix<double, 2, 1> trainpt,double rotation[3],double translation[3],double L,double def){
-//    std::cout<<"translation"<<std::endl;
-//    std::cout<<translation[0]<<"   "<<translation[1]<<"   "<<translation[2]<<std::endl;
-//    std::cout<<"rotation"<<std::endl;
-//    std::cout<<rotation[0]<<"   "<<rotation[1]<<"   "<<rotation[2]<<std::endl;
+    //    std::cout<<"translation"<<std::endl;
+    //    std::cout<<translation[0]<<"   "<<translation[1]<<"   "<<translation[2]<<std::endl;
+    //    std::cout<<"rotation"<<std::endl;
+    //    std::cout<<rotation[0]<<"   "<<rotation[1]<<"   "<<rotation[2]<<std::endl;
     Matrix<double,3,1> position(trainpt[0],trainpt[1],1);
-//    std::cout<<"l: "<<L<<" "<<"def: "<<def<<std::endl;
+    //    std::cout<<"l: "<<L<<" "<<"def: "<<def<<std::endl;
     Matrix<double,4,1> pt= transformation2(position,L,def);
     Matrix<double,3,4> P = calcul_P(rotation[0],rotation[1],rotation[2],translation[0],translation[1],translation[2],424,424,0,0);
     //std::cout<<"P"<<std::endl;
@@ -296,11 +299,12 @@ public:
         T y = T(x_[1]);
         T newz;
         T newx;
-        if(x<L){
+        T l=L;
+        if(x<l){
             //std::cout<<"point tranformé"<<std::endl;
-            T h= T(54/7.)*def/L;
-            newz = h/(L*L)*x*x*x-T(2)*h/L*x*x+h*x;
-            newx = x*(L-def)/L;
+            T h= T(54/7.)*def/l;
+            newz = h/(l*l)*x*x*x-T(2)*h/l*x*x+h*x;
+            newx = x*(l-def)/l;
         }
         else{
             newz=T(0);
@@ -357,25 +361,25 @@ Vec2 testdistance(const Eigen::Matrix<double,1,8>   param,
                   const Eigen::Matrix<double, 2, 1> &x1, //train point
                   const Eigen::Matrix<double, 2, 1> &x2){ //query point){//,
     // T backward_error[2]) {
-   // std::cout<<"param"<<std::endl;
-//    std::cout<<param<<std::endl;
+    // std::cout<<"param"<<std::endl;
+    //    std::cout<<param<<std::endl;
 
     typedef Eigen::Matrix<double, 3, 1> Vec3;
     double rotation[3];
     double translation[3];
     double L;
     double def;
-  //  std::cout<<"rotation:           translation:"<<std::endl;
+    //  std::cout<<"rotation:           translation:"<<std::endl;
     for (int i=0;i<3;i++){
         rotation[i]=param[i];
         translation[i]=param[i+3];
-      //  std::cout<<rotation[i]<<"                 "<<translation[i]<<std::endl;
+        //  std::cout<<rotation[i]<<"                 "<<translation[i]<<std::endl;
     }
 
     L = param[6];
     def =param[7];
     Eigen::Matrix<double,2,1> x1_trans =transform(x1,rotation,translation,L,def);
-   // distance[0] =x2(0)-x1_trans(0);
+    // distance[0] =x2(0)-x1_trans(0);
     //distance[1]= x2(1)-x1_trans(1);
     //std::cout<<x2-x1_trans<<std::endl;
     return x2-x1_trans;
@@ -387,10 +391,15 @@ double Distancetransfo(const Eigen::Matrix<double, 1, 8> &param,const  Eigen::Ma
     return distance.norm();
 
 }
-
+double Distancetransfo2( Eigen::Matrix<double, 8, 1> &param,const  Eigen::Matrix<double, 2, 1> &x1,
+                         const  Eigen::Matrix<double, 2, 1> &x2) {
+    Vec2 distance;
+    distance =testdistance(param,x1,x2);
+    return distance.norm();
+}
 class testconditionfinCallback : public ceres::IterationCallback {
 public:
-    testconditionfinCallback(const Eigen::Matrix<double, 1, 8>  param,const Mat &x1, const Mat &x2,const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {std::cout<<"init callback ok"<<std::endl;}
+    testconditionfinCallback(const Eigen::Matrix<double, 1, 8>  param,const Mat &x1, const Mat &x2,const SolverOptions &options): options_(options), x1_(x1), x2_(x2),param_(param) {}
     virtual ceres::CallbackReturnType operator()(
             const ceres::IterationSummary& summary) {
         // If the step wasn't successful, there's nothing to do.
@@ -399,7 +408,7 @@ public:
         }
         // Calculate average of symmetric geometric distance.
         double average_distance = 0.0;
-        for (int i = 0; i < 1; i++) {
+        for (int i = 0; i < x1_.cols(); i++) {
             //for (int i = 0; i < x1_.cols(); i++) {
             average_distance += Distancetransfo(param_,
                                                 x1_.col(i),
@@ -430,33 +439,34 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     //j'etablis le guess
 
     //definition des parametres de base
-    std::cout<< "parametres initiaux"<<std::endl;
-    std::cout<< "rotations"<<std::endl;
-    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
-    std::cout<< "Translations"<<std::endl;
-    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
-    std::cout<< "Parametres déformation"<<std::endl;
+    //    std::cout<< "parametres initiaux"<<std::endl;
+    //    std::cout<< "rotations"<<std::endl;
+    //    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
+    //    std::cout<< "Translations"<<std::endl;
+    //    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
+    //    std::cout<< "Parametres déformation"<<std::endl;
 
-    std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
+    //    std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
 
-    for (int i =0;i<6;i++){
-        parametresguess[i]+= (std::rand()/(double)RAND_MAX )*parametresguess[i];
-    }
+    //    for (int i =0;i<6;i++){
+    //        parametresguess[i]+= (std::rand()/(double)RAND_MAX )*parametresguess[i];
+    //    }
     *result<<parametresguess[0],parametresguess[1],parametresguess[2],parametresguess[3],parametresguess[4],parametresguess[5],parametresguess[6],parametresguess[7];
-    std::cout<<""<<std::endl;
-    std::cout<< "parametres déformés"<<std::endl;
-    std::cout<< "rotations"<<std::endl;
-    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
-    std::cout<< "Translations"<<std::endl;
-    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
-    std::cout<< "Parametres déformation"<<std::endl;
+//    std::cout<<" "<<std::endl;
+//    std::cout<<""<<std::endl;
+//    std::cout<< "parametres déformés"<<std::endl;
+//    std::cout<< "rotations"<<std::endl;
+//    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
+//    std::cout<< "Translations"<<std::endl;
+//    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
+//    std::cout<< "Parametres déformation"<<std::endl;
 
-    std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
-   // std::cout<<*result<<std::endl;
+    //std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
+    // std::cout<<*result<<std::endl;
     // Step 2: Refine matrix using Ceres minimizer.
     ceres::Problem problem;
     //for (int i = 0; i <8 ; i++) {
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < x1.cols(); i++) {
         distanceFunctor
                 *parametres_cost_function =
                 new distanceFunctor(x1.col(i),x2.col(i));
@@ -480,9 +490,78 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     ceres::Solver::Summary summary;
 
     ceres::Solve( solver_options, &problem, &summary);
-    std::cout<<summary.FullReport()<<std::endl;
+    //std::cout<<summary.FullReport()<<std::endl;
     return summary.IsSolutionUsable();
 
+}
+
+void affiche_avec_param(int wT,int hT,Matrix<double,8,1> &param){
+
+    cv::Mat Queryimg = cv::imread("./data/nat.png",cv::COLOR_BGR2GRAY);
+    double ratioW= 1.*Queryimg.size().width/wT;
+    double ratioH= 1.*Queryimg.size().height/hT;
+    double cu = 0;//imrefcolor.size().width/2;
+    double cv = 0;//imrefcolor.size().height/2;
+    double fu = 424;
+    double Rx= param[0];
+    double Ry= param[1];
+    double Rz= param[2];
+    double tx= param[3];
+    double ty =param[4];
+    double tz= param[5];
+    double L =param[6];
+  double def =param[7];
+    Matrix<double,4,4> F = calcul_F(Rx,Ry,Rz,tx,ty,tz);
+
+    Matrix<double,3,3> K = calcul_K(fu,fu,cu,cv);
+
+    //definition des points de départs
+    std::vector<Matrix<double,3,1>> originpts;
+    for(int i= 0; i<wT; i=i+100){
+        for (int j= 0; j<hT;j=j+100){
+            Matrix<double,3,1> pts(i,j,0);
+            originpts.push_back(pts);
+        }
+    }
+
+    //passage en 3x4de F
+    Matrix<double,3,4> F3x4= from4x4to3x4(F);
+    //cv::Mat img(wT,hT/2, CV_8UC3, cv::Scalar(1000,1000, 1000));
+    const int nbpts= originpts.size();
+    Matrix<double,4,1> pos;
+    Matrix<double,4,1> refpos;
+
+    SolverOptions options;
+    options.expected_average_symmetric_distance = 0.02;
+
+    for(int i = 0; i<nbpts; i++){
+
+        //std::cout<<"pt de base : "<<originpts[i]<<std::endl;
+        pos=transformation2(originpts[i],L,def);
+        //  std::cout<<"pos : "<<pos<<std::endl;
+        refpos(0)= originpts[i][0];
+        refpos(1)=originpts[i][1];
+        refpos(2)=originpts[i][2];
+        refpos(3)=1;
+        Matrix<double,4,1> ref;
+        Matrix<double,3,1> res;
+        ref = refpos;
+        res = K*F3x4*pos;
+        cv::Point2d pt(res(0)/res(2)*ratioW,res(1)/res(2)*ratioH);
+        cv::Point2d refpt(ref(0)*ratioW,ref(1)*ratioH);//(ref(0)/ref(2),ref(1)/ref(2));
+        // std::cout<<refpt<<std::endl;
+        cv::drawMarker(Queryimg,pt,cv::Scalar(0,1000,0));
+
+        cv::drawMarker(Queryimg,refpt,cv::Scalar(0,0,1000));
+    }
+    //cv::imwrite("testres.jpg",img);
+    //cv::imshow("test",trainimg);
+    cv::namedWindow("test",cv::WINDOW_NORMAL);
+    cv::resizeWindow("test",wT,hT);
+    cv::destroyAllWindows();
+    cv::imshow("test",Queryimg);
+    cv::imwrite("./finalmarion1.jpg",Queryimg);
+    cv::waitKey(0);
 }
 //----------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------
@@ -582,13 +661,13 @@ int main(int argc, char **argv)
         X2(0,i)=pt.x;
         X2(1,i)=pt.y;
         // std::cout<<refpt<<std::endl;
-        cv::drawMarker(img,pt/1.8,cv::Scalar(1000,0,0));
-        cv::drawMarker(img,refpt/1.8,cv::Scalar(0,0,1000));
+        cv::drawMarker(img,pt,cv::Scalar(1000,0,0));
+        cv::drawMarker(img,refpt,cv::Scalar(0,0,1000));
     }
     //cv::imwrite("testres.jpg",img);
     //cv::imshow("test",trainimg);
     cv::namedWindow("test",cv::WINDOW_NORMAL);
-    cv::resizeWindow("test",wT,hT);
+    //cv::resizeWindow("test",wT,hT);
     cv::imshow("test",img);
     cv::waitKey(0);
 
@@ -619,41 +698,130 @@ int main(int argc, char **argv)
 
     //affichage des matches
     cv::Mat imMatches;
-    // cv::drawMatches( Queryimg,keypoints2,trainimg,kpref , matches, imMatches);
-    //cv::drawMatches(imcam, keypoints2, patref->data,patref->keypoints, matches, imMatches);
-    //cv::imwrite("./matches.jpg", imMatches);
+     cv::drawMatches( Queryimg,keypoints2,trainimg,kpref , matches, imMatches);
+   // cv::drawMatches(imcam, keypoints2, patref->data,patref->keypoints, matches, imMatches);
+    cv::imwrite("./matchesnew.jpg", imMatches);
 
     std::vector<cv::Point2f> pt2, ptref;
     for(int i = 0; i<matches.size();i++){
         pt2.push_back( keypoints2[ matches[i].queryIdx ].pt );
         ptref.push_back( kpref[ matches[i].trainIdx ].pt );
     }
-
     cv::Mat imred;
     cv::Mat homo;
     //calcul de l'homographie via openCV
     homo = cv::findHomography( pt2, ptref, cv::RANSAC );
+    std::vector<int[5]> stock;
+    Mat x1(2, 5);
+    Mat x2(2, 5);
+    int nb_inliers=0;
+    Matrix<double,8,1> tempresult;
+
+   //int ptrefsize= 70;
+    int nb_iteration=2000;
+    srand(time(NULL));
+    for (int ite=0;ite<nb_iteration;ite++){
+        double param_guess[8]={0,0,0,300,100,500,wT/1.5,0};
+     //   tempresult<<0,0,0,300,100,250,wT/2,0;
+        std::cout<<"iteration no "<<ite<<std::endl;
+        int i =   rand() % ptref.size();
+        int j= rand()%(ptref.size()-1);
+        int k= rand()%(ptref.size()-2);
+        int l= rand()%(ptref.size()-3);
+        int m= rand()%(ptref.size()-4);
+        std::cout<<"point traités"<<i<<" "<<j<<" "<<k<<" "<<l<<" "<<m<<std::endl;
+
+        int nb_inliers_temp=0;
+        //double tempresult[8]=param_guess;
+//        x1(0, 0) = X1(0,i);
+//        x1(1, 0) = X1(1,i);
+//        x2(0, 0) = X2(0,i);
+//        x2(1, 0) = X2(1,i);
+//        x1(0, 1) = X1(0,j);
+//        x1(1, 1) = X1(1,j);
+//        x2(0, 1) = X2(0,j);
+//        x2(1, 1) = X2(1,j);
+//        x1(0, 2) = X1(0,k);
+//        x1(1, 2) = X1(1,k);
+//        x2(0, 2) = X2(0,k);
+//        x2(1, 2) = X2(1,k);
+//        x1(0, 3) = X1(0,l);
+//        x1(1, 3) = X1(1,l);
+//        x2(0, 3) = X2(0,l);
+//        x2(1, 3) = X2(1,l);
+//        x1(0, 4) = X1(0,m);
+//        x1(1, 4) = X1(1,m);
+//        x2(0, 4) = X2(0,m);
+//        x2(1, 4) = X2(1,m);
+        x1(0, 0) = ptref[i].x;
+        x1(1, 0) = ptref[i].y;
+        x2(0, 0) = pt2[i].x;
+        x2(1, 0) = pt2[i].y;
+        x1(0, 1) = ptref[j].x;
+        x1(1, 1) = ptref[j].y;
+        x2(0, 1) = pt2[j].x;
+        x2(1, 1) = pt2[j].y;
+        x1(0, 2) = ptref[k].x;
+        x1(1, 2) = ptref[k].y;
+        x2(0, 2) = pt2[k].x;
+        x2(1, 2) = pt2[k].y;
+        x1(0, 3) = ptref[l].x;
+        x1(1, 3) = ptref[l].y;
+        x2(0, 3) = pt2[l].x;
+        x2(1, 3) = pt2[l].y;
+        x1(0, 4) = ptref[m].x;
+        x1(1, 4) = ptref[m].y;
+        x2(0, 4) = pt2[m].x;
+        x2(1, 4) = pt2[m].y;
+
+        testmodelfrom2DFromCorrespondences(x1,x2,param_guess,options,&tempresult);
+        for (int it=0;it<ptref.size();it++){
+            double threshold= 5;
+          Matrix<double,1,2> x1_(ptref[it].x,ptref[it].y); //Matrix<double,1,2> x1_(X1(0,i),X2(1,i)); //
+          Matrix<double,1,2> x2_(pt2[it].x,pt2[it].y); //Matrix<double,1,2> x2_(X2(0,i),X2(1,i)); //
+            //verif inliers
+            double dist = Distancetransfo2(tempresult,x1_,x2_);
+            //std::cout<<it<<std::endl;
+            if (dist<=threshold){
+                nb_inliers_temp++;
+            }
+        }
+        std::cout<<"nombre inliers: "<<nb_inliers_temp<<std::endl;
+        if(nb_inliers_temp>nb_inliers){
+            nb_inliers=nb_inliers_temp;
+            result=tempresult;
+            affiche_avec_param(wT, hT,result);
+
+        }
+        std::cout<<" "<<std::endl;
+        std::cout<<"nombre inliers max: "<<nb_inliers<<std::endl;
+        std::cout<< "parametres"<<std::endl;
+        std::cout<< "rotations"<<std::endl;
+        std::cout<< "Rx: "<<result[0]<< " Ry: "<<result[1]<< " Rz: "<<result[2]<<std::endl;
+        std::cout<< "Translations"<<std::endl;
+        std::cout<< "Tx: "<<result[3]<< " Ty: "<<result[4]<< " Tz: "<<result[5]<<std::endl;
+        std::cout<< "Parametres déformation"<<std::endl;
+        std::cout<< "Longueur: "<<result[6]<<" deformation: "<<result[7] <<std::endl;
+    }
 
 
-    Mat x1(2, ptref.size());
-    for (int i = 0; i <ptref.size(); ++i) {
-        x1(0, i) = ptref[i].x;
-        x1(1, i) = ptref[i].y;
-    }
-    Mat x2 = x1;
-    for (int i = 0; i < x2.cols(); ++i) {
-        x2(0, i) =pt2[i].x;
-        x2(1, i) =  pt2[i].y;
-    }
-    for(int i =0; i<8;i++){
-        std::cout<<parametresguess[i]<<std::endl;
-    }
-    testmodelfrom2DFromCorrespondences(X1,X2,parametresguess,options,&result);
+
+
+
+    //    for(int i =0; i<8;i++){
+    //        std::cout<<parametresguess[i]<<std::endl;
+    //    }
+    //testmodelfrom2DFromCorrespondences(X1,X2,parametresguess,options,&result);
     //cv::warpPerspective(Queryimg, imred, homo, trainimg.size());
     std::cout<<"fin fonction"<<std::endl;
     std::cout<<result<<std::endl;
-    //cv::waitKey(0);
-    std::string outFilename("./final.jpg");
-    // cv::imwrite(outFilename, imred);
+    for (int i= 0;i<70;i++){
+        cv::Point2d pt(X2(0,i)*wQ/wT,X2(1,i)*hQ/hT);
+        cv::drawMarker(Queryimg,pt,cv::Scalar(0,1000,1000));
+    }
+    //cv::imshow("test",Queryimg);
+   // cv::waitKey(0);
+    //std::string outFilename("./finalmario2.jpg");
+     //cv::imwrite(outFilename,Queryimg );
 
 }
