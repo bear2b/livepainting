@@ -22,52 +22,65 @@ light2.position.set(1,1,0);
 scene.add(light2); 
 //scene.add(cube);
 camera.position.set( 1, 0, 0 );
-var monkey;
+var turtle, mixer;
 var loader = new THREE.GLTFLoader();
-
-//loader.load("model/singe.glb",function(objet){
-  //scene.add(object);
-//})
-
+var clock = new THREE.Clock();
 var newSkin 
-loader.load('./model/singe2.glb',
+
+loader.load('./model/turtle.glb',
 
     // called when the resource is loaded
     function (gltf) {
       console.log(gltf);
-      var scale =0.1;
-      const singe = gltf.scene;
-
-      //singe.rotation.set(0,1.5708,0)
-      singe.position.set(0,0,0);
-      singe.scale.set(scale,scale,scale);
-
-      singe.traverse( ( child ) => {
-    if ( child.name== "Cube004" ) {
-      console.log("Singe trouvé!");
-      monkey=child;
+      var scale =3;
+      const turtleScene = gltf.scene;
+      mixer= new THREE.AnimationMixer(turtleScene);
+      gltf.animations.forEach((clip) => {mixer.clipAction(clip).play(); });
 
       
-      //let texture = new THREE.TextureLoader().load("./model/singe_p.jpg");
-      child.rotation.set(-1.57,0,0)
-      child.position.set(0,0,0);
-      child.scale.set(scale,scale,scale);
-      console.log(monkey.material.map.image.src)
-
-     scene.add(child);
+      turtleScene.position.set(0,0,0);
+      turtleScene.scale.set(scale,scale,scale);
+      console.log("loaded turtle!")
+      turtleScene.traverse( ( child ) => {
+    if ( child.name== "wugui" ) {
+      console.log("wugui trouvé!");
+      turtle=child.children[0];
+      scene.add(turtle);
+      turtle.scale.set(0.1,0.1,0.1)
+      turtle.rotation.set(0,3.14,0)
+      window.scene=scene;
    }
  });
 
 
 
-});
+},function ( xhr ) {
+  console.log( (xhr.loaded / xhr.total * 100) + '% loaded' );
+},
+
+// onError callback
+function ( err ) {
+  console.error( 'An error happened' +err);
+}
+
+);
 
 function changeSkin(){
   var textureLoader = new THREE.TextureLoader();
-	textureLoader.load( "./model/singe_p.jpg", function ( map ) {
+	textureLoader.load( "./model/turtle.png", function ( map ) {
+    console.log("new texture")
     map.flipY=false;
-		monkey.material.map = map;
-    monkey.material.needsUpdate = true;
+    turtle.traverse(child=>{
+      
+      if(child.animations!=undefined){
+        console.log(child.name)
+      }
+      if(child.material!=undefined && child.material.map != undefined){
+        child.material.map = map;
+        child.material.needsUpdate = true;
+      }
+    })
+		
     
 	});
 }
@@ -89,6 +102,11 @@ var update = function()
 //drawscene
 var render = function()
 {
+  var delta = clock.getDelta();
+  if(mixer!=undefined){
+    mixer.update( delta )
+  }
+
 renderer.render(scene,camera);
 };
 //run GameLoop
