@@ -452,14 +452,14 @@ bool testmodelfrom2DFromCorrespondences(const Mat &x1,const Mat &x2, double para
     //        parametresguess[i]+= (std::rand()/(double)RAND_MAX )*parametresguess[i];
     //    }
     *result<<parametresguess[0],parametresguess[1],parametresguess[2],parametresguess[3],parametresguess[4],parametresguess[5],parametresguess[6],parametresguess[7];
-//    std::cout<<" "<<std::endl;
-//    std::cout<<""<<std::endl;
-//    std::cout<< "parametres déformés"<<std::endl;
-//    std::cout<< "rotations"<<std::endl;
-//    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
-//    std::cout<< "Translations"<<std::endl;
-//    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
-//    std::cout<< "Parametres déformation"<<std::endl;
+    //    std::cout<<" "<<std::endl;
+    //    std::cout<<""<<std::endl;
+    //    std::cout<< "parametres déformés"<<std::endl;
+    //    std::cout<< "rotations"<<std::endl;
+    //    std::cout<< "Rx: "<<parametresguess[0]<< " Ry: "<<parametresguess[1]<< " Rz: "<<parametresguess[2]<<std::endl;
+    //    std::cout<< "Translations"<<std::endl;
+    //    std::cout<< "Tx: "<<parametresguess[3]<< " Ty: "<<parametresguess[4]<< " Tz: "<<parametresguess[5]<<std::endl;
+    //    std::cout<< "Parametres déformation"<<std::endl;
 
     //std::cout<< "Longueur: "<<parametresguess[6]<<" deformation: "<<parametresguess[7] <<std::endl;
     // std::cout<<*result<<std::endl;
@@ -509,8 +509,8 @@ void affiche_avec_param(int wT,int hT,Matrix<double,8,1> &param){
     double tx= param[3];
     double ty =param[4];
     double tz= param[5];
-    double L =param[6];
-  double def =param[7];
+    double L = param[6];
+    double def =param[7];
     Matrix<double,4,4> F = calcul_F(Rx,Ry,Rz,tx,ty,tz);
 
     Matrix<double,3,3> K = calcul_K(fu,fu,cu,cv);
@@ -531,9 +531,6 @@ void affiche_avec_param(int wT,int hT,Matrix<double,8,1> &param){
     Matrix<double,4,1> pos;
     Matrix<double,4,1> refpos;
 
-    SolverOptions options;
-    options.expected_average_symmetric_distance = 0.02;
-
     for(int i = 0; i<nbpts; i++){
 
         //std::cout<<"pt de base : "<<originpts[i]<<std::endl;
@@ -547,21 +544,155 @@ void affiche_avec_param(int wT,int hT,Matrix<double,8,1> &param){
         Matrix<double,3,1> res;
         ref = refpos;
         res = K*F3x4*pos;
-        cv::Point2d pt(res(0)/res(2)*ratioW,res(1)/res(2)*ratioH);
+        cv::Point2d pt(res(0)/res(2),res(1)/res(2));//*ratioW*ratioH
         cv::Point2d refpt(ref(0)*ratioW,ref(1)*ratioH);//(ref(0)/ref(2),ref(1)/ref(2));
         // std::cout<<refpt<<std::endl;
-        cv::drawMarker(Queryimg,pt,cv::Scalar(0,1000,0));
+        cv::drawMarker(Queryimg,pt,cv::Scalar(1000,0,10));
 
-        cv::drawMarker(Queryimg,refpt,cv::Scalar(0,0,1000));
+        //cv::drawMarker(Queryimg,refpt,cv::Scalar(0,0,1000));
     }
     //cv::imwrite("testres.jpg",img);
     //cv::imshow("test",trainimg);
     cv::namedWindow("test",cv::WINDOW_NORMAL);
-    cv::resizeWindow("test",wT,hT);
-    cv::destroyAllWindows();
+    //cv::resizeWindow("test",wT,hT);
+    //cv::destroyAllWindows();
     cv::imshow("test",Queryimg);
     cv::imwrite("./finalmarion1.jpg",Queryimg);
     cv::waitKey(0);
+}
+
+void affiche_matches_avec_param( std::vector<int> inliers,std::vector<double> inliers_dist,std::vector<cv::Point2f> pt2,std::vector<cv::Point2f>  ptref, int wT,int hT,Matrix<double,8,1> &param){
+    //std::cout<<"in"<<std::endl;
+    cv::Mat Queryimg = cv::imread("./data/nat.png",cv::COLOR_BGR2GRAY);
+    cv::Mat trainimg = cv::imread("./data/test2.jpg",cv::COLOR_BGR2GRAY);
+    double ratioW= 1.*Queryimg.size().width/wT;
+    double ratioH= 1.*Queryimg.size().height/hT;
+    double cu = 0;//imrefcolor.size().width/2;
+    double cv = 0;//imrefcolor.size().height/2;
+    double fu = 424;
+    double Rx= param[0];
+    double Ry= param[1];
+    double Rz= param[2];
+    double tx= param[3];
+    double ty =param[4];
+    double tz= param[5];
+    double L = param[6];
+    double def =param[7];
+    Matrix<double,4,4> F = calcul_F(Rx,Ry,Rz,tx,ty,tz);
+    Matrix<double,3,3> K = calcul_K(fu,fu,cu,cv);
+    //definition des points de départs
+    std::vector<Matrix<double,3,1>> originpts;
+    std::cout<<inliers.data()<<std::endl;
+    for(int i= 0; i<inliers.size(); i++){
+        Matrix<double,3,1> pts(ptref[inliers[i]].x,ptref[inliers[i]].y,0);
+        originpts.push_back(pts);
+    }
+    std::cout<<"1"<<std::endl;
+    //passage en 3x4de F
+    Matrix<double,3,4> F3x4= from4x4to3x4(F);
+    //cv::Mat img(wT,hT/2, CV_8UC3, cv::Scalar(1000,1000, 1000));
+    const int nbpts= originpts.size();
+    Matrix<double,4,1> pos;
+    Matrix<double,4,1> refpos;
+
+
+    for(int i = 0; i<nbpts; i++){
+        //std::cout<<"pt de base : "<<originpts[i]<<std::endl;
+        pos=transformation2(originpts[i],L,def);
+        //  std::cout<<"pos : "<<pos<<std::endl;
+        refpos(0)= originpts[i][0];
+        refpos(1)=originpts[i][1];
+        refpos(2)=originpts[i][2];
+        refpos(3)=1;
+        Matrix<double,4,1> ref;
+        Matrix<double,3,1> res;
+        ref = refpos;
+        res = K*F3x4*pos;
+        cv::Point2d pt(res(0)/res(2),res(1)/res(2));//
+        cv::Point2d refpt(ref(0),ref(1));//(ref(0)/ref(2),ref(1)/ref(2));
+
+        // std::cout<<refpt<<std::endl;
+
+        cv::drawMarker(Queryimg,pt,cv::Scalar(0,0,1000));//pt2[inliers[i]]
+
+        cv::drawMarker(trainimg,refpt,cv::Scalar(0,0,1000));
+
+        cv::imshow("test1",trainimg);
+        cv::namedWindow("test2",cv::WINDOW_NORMAL);
+        cv::resizeWindow("test2",wT,hT);
+        cv::imshow("test2",Queryimg);
+
+       // cv::waitKey(0);
+        cv::destroyAllWindows();
+
+        std::cout<<"point no: "<<inliers[i]<<std::endl;
+        std::cout<<"pt x: "<<pt2[i].x<<" y:"<<pt2[i].y<<std::endl;
+
+        std::cout<<"point reprojeté: "<<std::endl;
+        std::cout<<"pt x: "<<pt.x<<" y:"<<pt.y<<std::endl;
+        std::cout<<"distance        : "<<std::sqrt((pt2[i].x-pt.x)*(pt2[i].x-pt.x)+(pt2[i].y-pt.y)*(pt2[i].y-pt.y))<<std::endl;
+        std::cout<<"distance solveur: "<<inliers_dist[i]<<std::endl;
+        std::cout<<" "<<std::endl;
+
+    }
+  cv::imwrite("./data/affichageinliers_train.png",trainimg);
+  cv::imwrite("./data/affichageinliers_query.png",Queryimg);
+
+}
+
+void affiche_matches_avec_param2( std::vector<int> inliers, std::vector<double> inliers_dist,std::vector<cv::Point2f> pt2,std::vector<cv::Point2f>  ptref, int wT,int hT,Matrix<double,8,1> &param){
+    std::cout<<"in"<<std::endl;
+    cv::Mat Queryimg = cv::imread("./data/nat.png",cv::COLOR_BGR2GRAY);
+    cv::Mat trainimg = cv::imread("./data/test2.jpg",cv::COLOR_BGR2GRAY);
+    double ratioW= 1.*Queryimg.size().width/wT;
+    double ratioH= 1.*Queryimg.size().height/hT;
+
+    //definition des points de départs
+    std::vector<Matrix<double,2,1>> originpts;
+     std::vector<Matrix<double,2,1>> originquerypts;
+   // std::cout<<inliers.data()<<std::endl;
+    for(int i= 0; i<inliers.size(); i++){
+        Matrix<double,2,1> pts(ptref[inliers[i]].x,ptref[inliers[i]].y);
+        Matrix<double,2,1> ptsquery(pt2[inliers[i]].x,pt2[inliers[i]].y);
+
+        originpts.push_back(pts);
+        originquerypts.push_back(ptsquery);
+    }
+
+    const int nbpts= originpts.size();
+    for(int i = 0; i<nbpts; i++){
+        double parametre[8]= {param[0],param[1],param[2],param[3],param[4],param[5],param[6],param[7]};
+        double point[2]= {originpts[i][0],originpts[i][1]};
+        //con mais obligatoire pour utiliser transPoint
+        Eigen::Matrix<double, 2,1> res= transPoint(parametre,point);
+        Eigen::Matrix<double, 2,1> ref = originpts[i];
+        cv::Point2d pt(res(0)*ratioW,res(1)*ratioH);//
+        cv::Point2d refpt(ref(0),ref(1));//(ref(0)/ref(2),ref(1)/ref(2));
+        Eigen::Matrix<double, 2,1> dist = originquerypts[i]-res;
+        // std::cout<<refpt<<std::endl;
+
+        cv::drawMarker(Queryimg,pt,cv::Scalar(0,0,1000));//pt2[inliers[i]]
+
+        cv::drawMarker(trainimg,refpt,cv::Scalar(0,0,1000));
+
+        cv::imshow("test1",trainimg);
+        cv::namedWindow("test2",cv::WINDOW_NORMAL);
+        cv::resizeWindow("test2",wT,hT);
+        cv::imshow("test2",Queryimg);
+
+        cv::waitKey(0);
+        cv::destroyAllWindows();
+
+        std::cout<<"point no: "<<inliers[i]<<std::endl;
+        std::cout<<"pt x: "<<pt2[i].x<<" y:"<<pt2[i].y<<std::endl;
+
+        std::cout<<"point reprojeté: "<<std::endl;
+        std::cout<<"pt x: "<<pt.x<<" y:"<<pt.y<<std::endl;
+        std::cout<<"distance: "<<dist.norm()<<std::endl;
+        std::cout<<" "<<std::endl;
+
+    }
+
 }
 //----------------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------------
@@ -666,10 +797,10 @@ int main(int argc, char **argv)
     }
     //cv::imwrite("testres.jpg",img);
     //cv::imshow("test",trainimg);
-    cv::namedWindow("test",cv::WINDOW_NORMAL);
+    //cv::namedWindow("test",cv::WINDOW_NORMAL);
     //cv::resizeWindow("test",wT,hT);
-    cv::imshow("test",img);
-    cv::waitKey(0);
+    // cv::imshow("test",img);
+    // cv::waitKey(0);
 
     //detection et calcul de l'homographie
     cv::Ptr<cv::Feature2D> detector = cv::ORB::create(500);
@@ -698,8 +829,8 @@ int main(int argc, char **argv)
 
     //affichage des matches
     cv::Mat imMatches;
-     cv::drawMatches( Queryimg,keypoints2,trainimg,kpref , matches, imMatches);
-   // cv::drawMatches(imcam, keypoints2, patref->data,patref->keypoints, matches, imMatches);
+    cv::drawMatches( Queryimg,keypoints2,trainimg,kpref , matches, imMatches);
+    // cv::drawMatches(imcam, keypoints2, patref->data,patref->keypoints, matches, imMatches);
     cv::imwrite("./matchesnew.jpg", imMatches);
 
     std::vector<cv::Point2f> pt2, ptref;
@@ -717,42 +848,70 @@ int main(int argc, char **argv)
     int nb_inliers=0;
     Matrix<double,8,1> tempresult;
 
-   //int ptrefsize= 70;
-    int nb_iteration=2000;
+    //int ptrefsize= 70;
+    int nb_iteration=1000;
     srand(time(NULL));
+    std::vector<int> inliers;
+    std::vector<int> inliers_temp;
+    std::vector<double> inliers_dist;
+    std::vector<double> inliers_dist_temp;
     for (int ite=0;ite<nb_iteration;ite++){
         double param_guess[8]={0,0,0,300,100,500,wT/1.5,0};
-     //   tempresult<<0,0,0,300,100,250,wT/2,0;
+        //   tempresult<<0,0,0,300,100,250,wT/2,0;
         std::cout<<"iteration no "<<ite<<std::endl;
-        int i =   rand() % ptref.size();
-        int j= rand()%(ptref.size()-1);
-        int k= rand()%(ptref.size()-2);
-        int l= rand()%(ptref.size()-3);
-        int m= rand()%(ptref.size()-4);
+
+        bool test = true;
+        int i,j,k,l,m;
+
+        while(test){
+            i =rand() % ptref.size();
+            j= rand()%(ptref.size());
+            k= rand()%(ptref.size());
+            l= rand()%(ptref.size());
+            m= rand()%(ptref.size());
+            int points[5]={i,j,k,l,m};
+            test=false;
+            for( int a =0;a<5;a++){
+                for (int b = 0;b<5;b++ ){
+                    if(a!=b){
+                        if (points[a]==points[b]){
+                            test=true;
+                        }
+                    }
+
+                }
+                if(test){
+                    break;
+                }
+            }
+
+        }
+        //assert
         std::cout<<"point traités"<<i<<" "<<j<<" "<<k<<" "<<l<<" "<<m<<std::endl;
 
         int nb_inliers_temp=0;
+
         //double tempresult[8]=param_guess;
-//        x1(0, 0) = X1(0,i);
-//        x1(1, 0) = X1(1,i);
-//        x2(0, 0) = X2(0,i);
-//        x2(1, 0) = X2(1,i);
-//        x1(0, 1) = X1(0,j);
-//        x1(1, 1) = X1(1,j);
-//        x2(0, 1) = X2(0,j);
-//        x2(1, 1) = X2(1,j);
-//        x1(0, 2) = X1(0,k);
-//        x1(1, 2) = X1(1,k);
-//        x2(0, 2) = X2(0,k);
-//        x2(1, 2) = X2(1,k);
-//        x1(0, 3) = X1(0,l);
-//        x1(1, 3) = X1(1,l);
-//        x2(0, 3) = X2(0,l);
-//        x2(1, 3) = X2(1,l);
-//        x1(0, 4) = X1(0,m);
-//        x1(1, 4) = X1(1,m);
-//        x2(0, 4) = X2(0,m);
-//        x2(1, 4) = X2(1,m);
+//                x1(0, 0) = X1(0,i);
+//                x1(1, 0) = X1(1,i);
+//                x2(0, 0) = X2(0,i);
+//                x2(1, 0) = X2(1,i);
+//                x1(0, 1) = X1(0,j);
+//                x1(1, 1) = X1(1,j);
+//                x2(0, 1) = X2(0,j);
+//                x2(1, 1) = X2(1,j);
+//                x1(0, 2) = X1(0,k);
+//                x1(1, 2) = X1(1,k);
+//                x2(0, 2) = X2(0,k);
+//                x2(1, 2) = X2(1,k);
+//                x1(0, 3) = X1(0,l);
+//                x1(1, 3) = X1(1,l);
+//                x2(0, 3) = X2(0,l);
+//                x2(1, 3) = X2(1,l);
+//                x1(0, 4) = X1(0,m);
+//                x1(1, 4) = X1(1,m);
+//                x2(0, 4) = X2(0,m);
+//                x2(1, 4) = X2(1,m);
         x1(0, 0) = ptref[i].x;
         x1(1, 0) = ptref[i].y;
         x2(0, 0) = pt2[i].x;
@@ -775,33 +934,52 @@ int main(int argc, char **argv)
         x2(1, 4) = pt2[m].y;
 
         testmodelfrom2DFromCorrespondences(x1,x2,param_guess,options,&tempresult);
+
+
+        inliers_temp.clear();
         for (int it=0;it<ptref.size();it++){
             double threshold= 5;
-          Matrix<double,1,2> x1_(ptref[it].x,ptref[it].y); //Matrix<double,1,2> x1_(X1(0,i),X2(1,i)); //
-          Matrix<double,1,2> x2_(pt2[it].x,pt2[it].y); //Matrix<double,1,2> x2_(X2(0,i),X2(1,i)); //
+            Matrix<double,1,2> x1_(ptref[it].x,ptref[it].y); //Matrix<double,1,2> x1_(X1(0,i),X2(1,i)); //
+            Matrix<double,1,2> x2_(pt2[it].x,pt2[it].y); //Matrix<double,1,2> x2_(X2(0,i),X2(1,i)); //
             //verif inliers
             double dist = Distancetransfo2(tempresult,x1_,x2_);
+
             //std::cout<<it<<std::endl;
             if (dist<=threshold){
                 nb_inliers_temp++;
+                inliers_temp.push_back(it);
+                inliers_dist_temp.push_back(dist);
+                std::cout<<"point no : "<<it<<std::endl;
+                 std::cout<<"distance : "<<dist<<std::endl;
+
             }
+
         }
         std::cout<<"nombre inliers: "<<nb_inliers_temp<<std::endl;
         if(nb_inliers_temp>nb_inliers){
+            inliers.clear();
+            inliers_dist.clear();
+            inliers_dist=inliers_dist_temp;
             nb_inliers=nb_inliers_temp;
+            inliers=inliers_temp;
             result=tempresult;
+           // std::cout<<"inliers "<<inliers.<<std::endl;
             affiche_avec_param(wT, hT,result);
 
         }
-        std::cout<<" "<<std::endl;
+        //        std::cout<<"tempresult"<<std::endl;
+        //        std::cout<<tempresult<<std::endl;
+        //        std::cout<<"result"<<std::endl;
+        //        std::cout<<result<<std::endl;
+        //        std::cout<<" "<<std::endl;
         std::cout<<"nombre inliers max: "<<nb_inliers<<std::endl;
-        std::cout<< "parametres"<<std::endl;
-        std::cout<< "rotations"<<std::endl;
-        std::cout<< "Rx: "<<result[0]<< " Ry: "<<result[1]<< " Rz: "<<result[2]<<std::endl;
-        std::cout<< "Translations"<<std::endl;
-        std::cout<< "Tx: "<<result[3]<< " Ty: "<<result[4]<< " Tz: "<<result[5]<<std::endl;
-        std::cout<< "Parametres déformation"<<std::endl;
-        std::cout<< "Longueur: "<<result[6]<<" deformation: "<<result[7] <<std::endl;
+        //        std::cout<< "parametres"<<std::endl;
+        //        std::cout<< "rotations"<<std::endl;
+        //        std::cout<< "Rx: "<<result[0]<< " Ry: "<<result[1]<< " Rz: "<<result[2]<<std::endl;
+        //        std::cout<< "Translations"<<std::endl;
+        //        std::cout<< "Tx: "<<result[3]<< " Ty: "<<result[4]<< " Tz: "<<result[5]<<std::endl;
+        //        std::cout<< "Parametres déformation"<<std::endl;
+        //        std::cout<< "Longueur: "<<result[6]<<" deformation: "<<result[7] <<std::endl;
     }
 
 
@@ -815,13 +993,15 @@ int main(int argc, char **argv)
     //cv::warpPerspective(Queryimg, imred, homo, trainimg.size());
     std::cout<<"fin fonction"<<std::endl;
     std::cout<<result<<std::endl;
-    for (int i= 0;i<70;i++){
-        cv::Point2d pt(X2(0,i)*wQ/wT,X2(1,i)*hQ/hT);
-        cv::drawMarker(Queryimg,pt,cv::Scalar(0,1000,1000));
-    }
+//    for (int i= 0;i<70;i++){
+//        cv::Point2d pt(X2(0,i)*wQ/wT,X2(1,i)*hQ/hT);
+//        //cv::drawMarker(Queryimg,pt,cv::Scalar(0,1000,1000));
+//    }
     //cv::imshow("test",Queryimg);
-   // cv::waitKey(0);
+    // cv::waitKey(0);
     //std::string outFilename("./finalmario2.jpg");
-     //cv::imwrite(outFilename,Queryimg );
+    //cv::imwrite(outFilename,Queryimg );
+    affiche_matches_avec_param(inliers,inliers_dist,pt2,ptref,wT,hT,result);
+  //  affiche_matches_avec_param2(inliers,inliers_dist,pt2,ptref,wT,hT,result);
 
 }
